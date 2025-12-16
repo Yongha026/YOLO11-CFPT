@@ -773,8 +773,8 @@ class ContrastiveHead(nn.Module):
         Returns:
             (torch.Tensor): Similarity scores.
         """
-        x = F.normalize(x, dim=1, p=2)
-        w = F.normalize(w, dim=-1, p=2)
+        x = F.normalize(x, dim=1, p=2,eps=1e-6)
+        w = F.normalize(w, dim=-1, p=2,eps=1e-6)
         x = torch.einsum("bchw,bkc->bkhw", x, w)
         return x * self.logit_scale.exp() + self.bias
 
@@ -821,7 +821,7 @@ class BNContrastiveHead(nn.Module):
             (torch.Tensor): Similarity scores.
         """
         x = self.norm(x)
-        w = F.normalize(w, dim=-1, p=2)
+        w = F.normalize(w, dim=-1, p=2, qps=1e-6)
 
         x = torch.einsum("bchw,bkc->bkhw", x, w)
         return x * self.logit_scale.exp() + self.bias
@@ -1950,7 +1950,7 @@ class SAVPE(nn.Module):
         score = F.softmax(score, dim=-1).to(y.dtype)
         aggregated = score.transpose(-2, -3) @ x.reshape(B, self.c, C // self.c, -1).transpose(-1, -2)
 
-        return F.normalize(aggregated.transpose(-2, -3).reshape(B, Q, -1), dim=-1, p=2)
+        return F.normalize(aggregated.transpose(-2, -3).reshape(B, Q, -1), dim=-1, p=2,eps=1e-6)
 
 # ======================================== Try to insert CPFT ========================================
 
@@ -2188,7 +2188,7 @@ class CrossLayerSpatialAttention(nn.Module):
         k_stack = torch.cat(k_list, dim=-2)
         v_stack = torch.cat(v_list, dim=-2)
 
-        attn = F.normalize(q_stack, dim=-1) @ F.normalize(k_stack, dim=-1).transpose(-1, -2)
+        attn = F.normalize(q_stack, dim=-1, eps=1e-6) @ F.normalize(k_stack, dim=-1,eps=1e-6).transpose(-1, -2)
         attn = attn + self.pos_embed()
         attn = self.softmax(attn)
 
@@ -2279,7 +2279,7 @@ class CrossLayerChannelAttention(nn.Module):
         q_stack = torch.cat(q_list, dim=-2)
         k_stack = torch.cat(k_list, dim=-2)
         v_stack = torch.cat(v_list, dim=-2)
-        attn = F.normalize(q_stack, dim=-1) @ F.normalize(k_stack, dim=-1).transpose(-2, -1)
+        attn = F.normalize(q_stack, dim=-1,eps=1e-6) @ F.normalize(k_stack, dim=-1,eps=1e-6).transpose(-2, -1)
 
         attn = attn + self.pos_embed()
         attn = self.softmax(attn)
