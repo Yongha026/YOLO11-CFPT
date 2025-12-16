@@ -773,7 +773,7 @@ class ContrastiveHead(nn.Module):
         Returns:
             (torch.Tensor): Similarity scores.
         """
-        x = F.normalize(x, dim=1, p=2,eps=1e-6) # eps should be 1e-6=0x0011 for FP16
+        x = F.normalize(x, dim=1, p=2,eps=1e-6) # eps should be 1e-6=0x0011 for FP16. default : 1e-12 for fp32
         w = F.normalize(w, dim=-1, p=2,eps=1e-6)
         x = torch.einsum("bchw,bkc->bkhw", x, w)
         return x * self.logit_scale.exp() + self.bias
