@@ -2191,7 +2191,7 @@ class CrossLayerSpatialAttention(nn.Module):
 
         attn = F.normalize(q_stack, dim=-1, eps=1e-6) @ F.normalize(k_stack, dim=-1,eps=1e-6).transpose(-1, -2)
         attn = attn + self.pos_embed()
-        attn = torch.clamp(attn, min=-100, max=100) # clamp before softmax
+        attn = torch.clamp(attn, min=-50, max=50) # clamp before softmax
         attn = self.softmax(attn)
 
         out = attn @ v_stack
@@ -2284,7 +2284,7 @@ class CrossLayerChannelAttention(nn.Module):
         attn = F.normalize(q_stack, dim=-1,eps=1e-6) @ F.normalize(k_stack, dim=-1,eps=1e-6).transpose(-2, -1)
 
         attn = attn + self.pos_embed()
-        attn = torch.clamp(attn, min=-100, max=100) # clamp before softmax
+        attn = torch.clamp(attn, min=-50, max=50) # clamp before softmax
         attn = self.softmax(attn)   
         out = attn @ v_stack
         out = einops.rearrange(out, "b nh c ws hw -> b (nh c) ws hw")
