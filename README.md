@@ -2,6 +2,8 @@
 
 This project modifies the **[Ultralytics YOLOv11](https://github.com/ultralytics/ultralytics)** architecture by replacing its default neck (PAFPN) with the **[Cross-layer Feature Pyramid Transformer (CFPT)](https://github.com/duzw9311/CFPT)** to improve small object detection in sparse LiDAR BEV images.
 
+![Architecture](/images/Diagram.jpg)
+
 ## Howto(Colab recommended)
 ```python
 # 1. Install ultralytics. Only works with version 8.3.253 
