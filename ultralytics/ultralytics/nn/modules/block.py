@@ -2091,28 +2091,52 @@ class Mlp(nn.Module):
     
 def overlaped_window_partition(x, window_size, stride, pad):
     B, C, H, W = x.shape
-    out = torch.nn.functional.unfold(x, kernel_size=(window_size, window_size), stride=stride, padding=pad)
-    return out.reshape(B, C, window_size * window_size, -1).permute(0, 3, 2, 1)
+    if isinstance(pad, int):
+        pad = (pad, pad)
+    if isinstance(stride, int):
+        stride = (stride, stride)
+    kernel = torch.eye(window_size * window_size, device=x.device, dtype=x.dtype).reshape(window_size * window_size, 1, window_size, window_size)
+    kernel = kernel.repeat(C, 1, 1, 1)
+    out = F.conv2d(x, kernel, stride=stride, padding=pad, groups=C)
+    return einops.rearrange(out, "b (c wsm) h w -> b (h w) wsm c", c=C, wsm=window_size * window_size)
 
 
 def overlaped_window_reverse(x, H, W, window_size, stride, padding):
     B, Wm, Wsm, C = x.shape
     Ws, S, P = window_size, stride, padding
-    x = x.permute(0, 3, 2, 1).reshape(B, C * Wsm, Wm)
-    out = torch.nn.functional.fold(x, output_size=(H, W), kernel_size=(Ws, Ws), padding=P, stride=S)
+    if isinstance(P, int):
+        P = (P, P)
+    if isinstance(S, int):
+        S = (S, S)
+    h_w = (H + 2 * P[0] - Ws) // S[0] + 1
+    w_w = (W + 2 * P[1] - Ws) // S[1] + 1
+    x = einops.rearrange(x, "b (h w) wsm c -> b (c wsm) h w", h=h_w, w=w_w)
+    kernel = torch.eye(Wsm, device=x.device, dtype=x.dtype).reshape(Wsm, 1, Ws, Ws)
+    kernel = kernel.repeat(C, 1, 1, 1)
+    out = F.conv_transpose2d(x, kernel, stride=S, padding=P, groups=C, output_size=(H, W))
     return out
 
 def overlaped_channel_partition(x, window_size, stride, pad):
     B, HW, C, _ = x.shape
-    out = torch.nn.functional.unfold(x, kernel_size=(window_size, 1), stride=(stride, 1), padding=(pad, 0))
-    out = out.reshape(B, HW, window_size, -1)
-    return out
+    if isinstance(pad, int):
+        pad = (pad, 0)
+    if isinstance(stride, int):
+        stride = (stride, 1)
+    kernel = torch.eye(window_size, device=x.device, dtype=x.dtype).reshape(window_size, 1, window_size, 1)
+    kernel = kernel.repeat(HW, 1, 1, 1)
+    out = F.conv2d(x, kernel, stride=stride, padding=pad, groups=HW)
+    return einops.rearrange(out, "b (hw wsm) l 1 -> b hw wsm l", hw=HW, wsm=window_size)
 
 def overlaped_channel_reverse(x, window_size, stride, pad, outC):
     B, C, Ws, HW = x.shape
-    x = x.permute(0, 3, 2, 1).reshape(B, HW * Ws, C)
-    out = torch.nn.functional.fold(x, output_size=(outC, 1), kernel_size=(window_size, 1), padding=(pad, 0),
-                                   stride=(stride, 1))
+    if isinstance(pad, int):
+        pad = (pad, 0)
+    if isinstance(stride, int):
+        stride = (stride, 1)
+    x = einops.rearrange(x, "b c wsm hw -> b (hw wsm) c 1")
+    kernel = torch.eye(window_size, device=x.device, dtype=x.dtype).reshape(window_size, 1, window_size, 1)
+    kernel = kernel.repeat(HW, 1, 1, 1)
+    out = F.conv_transpose2d(x, kernel, stride=stride, padding=pad, groups=HW, output_size=(outC, 1))
     return out
 
 class CrossLayerSpatialAttention(nn.Module):
