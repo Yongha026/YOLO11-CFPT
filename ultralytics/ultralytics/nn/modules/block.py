@@ -2113,7 +2113,9 @@ def overlaped_window_reverse(x, H, W, window_size, stride, padding):
     x = einops.rearrange(x, "b (h w) wsm c -> b (c wsm) h w", h=h_w, w=w_w)
     kernel = torch.eye(Wsm, device=x.device, dtype=x.dtype).reshape(Wsm, 1, Ws, Ws)
     kernel = kernel.repeat(C, 1, 1, 1)
-    out = F.conv_transpose2d(x, kernel, stride=S, padding=P, groups=C, output_size=(H, W))
+    pad_h = (H + 2 * P[0] - Ws) % S[0]
+    pad_w = (W + 2 * P[1] - Ws) % S[1]
+    out = F.conv_transpose2d(x, kernel, stride=S, padding=P, groups=C, output_padding=(pad_h, pad_w))
     return out
 
 def overlaped_channel_partition(x, window_size, stride, pad):
@@ -2133,10 +2135,11 @@ def overlaped_channel_reverse(x, window_size, stride, pad, outC):
         pad = (pad, 0)
     if isinstance(stride, int):
         stride = (stride, 1)
-    x = einops.rearrange(x, "b c wsm hw -> b (hw wsm) c 1")
+    x = einops.rearrange(x, "b c wsm hw -> b (c wsm) hw 1")
     kernel = torch.eye(window_size, device=x.device, dtype=x.dtype).reshape(window_size, 1, window_size, 1)
-    kernel = kernel.repeat(HW, 1, 1, 1)
-    out = F.conv_transpose2d(x, kernel, stride=stride, padding=pad, groups=HW, output_size=(outC, 1))
+    kernel = kernel.repeat(C, 1, 1, 1)
+    pad_h = (outC + 2 * pad[0] - window_size) % stride[0]
+    out = F.conv_transpose2d(x, kernel, stride=stride, padding=pad, groups=C, output_padding=(pad_h, 0))
     return out
 
 class CrossLayerSpatialAttention(nn.Module):
