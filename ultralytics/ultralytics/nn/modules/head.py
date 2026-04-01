@@ -326,7 +326,8 @@ class OBB(Detect):
                 "boxes": torch.cat([pb.view(bs, self.reg_max * 4, -1) for pb in pred_boxes], 2),
                 "scores": torch.cat([ps.view(bs, self.nc, -1) for ps in pred_scores], 2),
                 "angle": angle,
-                "feats": x # Keep original feats just in case
+                "feats": x, # Keep original feats just in case
+                0: x # Stride calculation compatibility
             }
 
         x = Detect.forward(self, x)
