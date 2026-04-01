@@ -297,7 +297,7 @@ class OBB(Detect):
         c4 = max(ch[0] // 4, self.ne)
         self.cv4 = nn.ModuleList(nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3), nn.Conv2d(c4, self.ne, 1)) for x in ch)
 
-    def forward(self, x: list[torch.Tensor]) -> torch.Tensor | tuple | dict:
+    def forward(self, x: list[torch.Tensor]) -> torch.Tensor | tuple:
         """Concatenate and return predicted bounding boxes and class probabilities."""
         bs = x[0].shape[0]  # batch size
         angle = torch.cat([self.cv4[i](x[i]).view(bs, self.ne, -1) for i in range(self.nl)], 2)  # OBB theta logits
@@ -306,38 +306,10 @@ class OBB(Detect):
         # angle = angle.sigmoid() * math.pi / 2  # [0, pi/2]
         if not self.training:
             self.angle = angle
-        
-        # In v8.4.0+, the loss function expects a dictionary in training and validation mode (to compute val loss)
+        x = Detect.forward(self, x)
         if self.training:
-            # Detect.forward returns a list of [cat(box, cls)] in training mode
-            x = Detect.forward(self, x)
-        else:
-            # Detect.forward returns (y, x) in inference mode
-            d_out = Detect.forward(self, x)
-            if self.export:
-                return torch.cat([d_out, angle], 1)
-            y, x = d_out
-
-        # Prepare dictionary for loss function (v8.4.0+ compatibility)
-        pred_boxes = []
-        pred_scores = []
-        for xi in x:
-            box, score = xi.split((self.reg_max * 4, self.nc), 1)
-            pred_boxes.append(box)
-            pred_scores.append(score)
-        
-        preds_dict = {
-            "boxes": torch.cat([pb.view(bs, self.reg_max * 4, -1) for pb in pred_boxes], 2),
-            "scores": torch.cat([ps.view(bs, self.nc, -1) for ps in pred_scores], 2),
-            "angle": angle,
-            "feats": x, # Keep original feats just in case
-            0: x # Stride calculation compatibility
-        }
-
-        if self.training:
-            return preds_dict
-
-        return torch.cat([y, angle], 1), preds_dict
+            return x, angle
+        return torch.cat([x, angle], 1) if self.export else (torch.cat([x[0], angle], 1), (x[1], angle))
 
     def decode_bboxes(self, bboxes: torch.Tensor, anchors: torch.Tensor) -> torch.Tensor:
         """Decode rotated bounding boxes."""

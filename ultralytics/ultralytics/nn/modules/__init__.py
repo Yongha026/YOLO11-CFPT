@@ -90,8 +90,6 @@ from .head import (
     YOLOESegment,
     v10Detect,
 )
-
-Segment26 = Segment # Alias for compatibility with v8.4.0+
 from .transformer import (
     AIFI,
     MLP,
@@ -173,7 +171,6 @@ __all__ = (
     "ResNetLayer",
     "SCDown",
     "Segment",
-    "Segment26",
     "SpatialAttention",
     "TorchVision",
     "TransformerBlock",
