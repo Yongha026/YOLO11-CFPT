@@ -2135,11 +2135,11 @@ def overlaped_channel_reverse(x, window_size, stride, pad, outC):
         pad = (pad, 0)
     if isinstance(stride, int):
         stride = (stride, 1)
-    x = einops.rearrange(x, "b c wsm hw -> b (c wsm) hw 1")
+    x = einops.rearrange(x, "b c wsm hw -> b (hw wsm) c 1")
     kernel = torch.eye(window_size, device=x.device, dtype=x.dtype).reshape(window_size, 1, window_size, 1)
-    kernel = kernel.repeat(C, 1, 1, 1)
+    kernel = kernel.repeat(HW, 1, 1, 1)
     pad_h = (outC + 2 * pad[0] - window_size) % stride[0]
-    out = F.conv_transpose2d(x, kernel, stride=stride, padding=pad, groups=C, output_padding=(pad_h, 0))
+    out = F.conv_transpose2d(x, kernel, stride=stride, padding=pad, groups=HW, output_padding=(pad_h, 0))
     return out
 
 class CrossLayerSpatialAttention(nn.Module):
@@ -2217,11 +2217,11 @@ class CrossLayerSpatialAttention(nn.Module):
         v_stack = torch.cat(v_list, dim=-2)
 
         attn = F.normalize(q_stack, dim=-1, eps=1e-6) @ F.normalize(k_stack, dim=-1,eps=1e-6).transpose(-1, -2)
-        attn = attn + self.pos_embed()
+        attn = attn + self.pos_embed().to(attn.dtype)
         attn = torch.clamp(attn, min=-50, max=50) # clamp before softmax
         attn = self.softmax(attn)
 
-        out = attn @ v_stack
+        out = attn.to(v_stack.dtype) @ v_stack
         out = out.permute(0, 2, 3, 1, 4).reshape(B, WmH * WmW, self.token_num, self.hidden_dim)
 
         out_split = out.split(self.token_num_per_layer, dim=-2)
@@ -2310,10 +2310,10 @@ class CrossLayerChannelAttention(nn.Module):
         v_stack = torch.cat(v_list, dim=-2)
         attn = F.normalize(q_stack, dim=-1,eps=1e-6) @ F.normalize(k_stack, dim=-1,eps=1e-6).transpose(-2, -1)
 
-        attn = attn + self.pos_embed()
+        attn = attn + self.pos_embed().to(attn.dtype)
         attn = torch.clamp(attn, min=-50, max=50) # clamp before softmax
         attn = self.softmax(attn)   
-        out = attn @ v_stack
+        out = attn.to(v_stack.dtype) @ v_stack
         out = einops.rearrange(out, "b nh c ws hw -> b (nh c) ws hw")
 
         out_split = out.split(self.token_num_per_layer, dim=-2)
