@@ -307,31 +307,37 @@ class OBB(Detect):
         if not self.training:
             self.angle = angle
         
-        # In v8.4.0+, the loss function expects a dictionary in training mode
+        # In v8.4.0+, the loss function expects a dictionary in training and validation mode (to compute val loss)
         if self.training:
             # Detect.forward returns a list of [cat(box, cls)] in training mode
             x = Detect.forward(self, x)
-            # We need to split them or provide them in a way the loss expects
-            # Based on the error, it expects preds["boxes"], preds["scores"], preds["angle"]
-            # Detect.forward(self, x) returns a list of tensors [B, no, H*W]
-            # where no = nc + reg_max * 4
-            pred_boxes = []
-            pred_scores = []
-            for xi in x:
-                box, score = xi.split((self.reg_max * 4, self.nc), 1)
-                pred_boxes.append(box)
-                pred_scores.append(score)
-            
-            return {
-                "boxes": torch.cat([pb.view(bs, self.reg_max * 4, -1) for pb in pred_boxes], 2),
-                "scores": torch.cat([ps.view(bs, self.nc, -1) for ps in pred_scores], 2),
-                "angle": angle,
-                "feats": x, # Keep original feats just in case
-                0: x # Stride calculation compatibility
-            }
+        else:
+            # Detect.forward returns (y, x) in inference mode
+            d_out = Detect.forward(self, x)
+            if self.export:
+                return torch.cat([d_out, angle], 1)
+            y, x = d_out
 
-        x = Detect.forward(self, x)
-        return torch.cat([x, angle], 1) if self.export else (torch.cat([x[0], angle], 1), (x[1], angle))
+        # Prepare dictionary for loss function (v8.4.0+ compatibility)
+        pred_boxes = []
+        pred_scores = []
+        for xi in x:
+            box, score = xi.split((self.reg_max * 4, self.nc), 1)
+            pred_boxes.append(box)
+            pred_scores.append(score)
+        
+        preds_dict = {
+            "boxes": torch.cat([pb.view(bs, self.reg_max * 4, -1) for pb in pred_boxes], 2),
+            "scores": torch.cat([ps.view(bs, self.nc, -1) for ps in pred_scores], 2),
+            "angle": angle,
+            "feats": x, # Keep original feats just in case
+            0: x # Stride calculation compatibility
+        }
+
+        if self.training:
+            return preds_dict
+
+        return torch.cat([y, angle], 1), preds_dict
 
     def decode_bboxes(self, bboxes: torch.Tensor, anchors: torch.Tensor) -> torch.Tensor:
         """Decode rotated bounding boxes."""
