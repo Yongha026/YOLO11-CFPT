@@ -297,7 +297,7 @@ class OBB(Detect):
         c4 = max(ch[0] // 4, self.ne)
         self.cv4 = nn.ModuleList(nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3), nn.Conv2d(c4, self.ne, 1)) for x in ch)
 
-    def forward(self, x: list[torch.Tensor]) -> torch.Tensor | tuple:
+    def forward(self, x: list[torch.Tensor]) -> torch.Tensor | tuple | dict:
         """Concatenate and return predicted bounding boxes and class probabilities."""
         bs = x[0].shape[0]  # batch size
         angle = torch.cat([self.cv4[i](x[i]).view(bs, self.ne, -1) for i in range(self.nl)], 2)  # OBB theta logits
@@ -306,9 +306,30 @@ class OBB(Detect):
         # angle = angle.sigmoid() * math.pi / 2  # [0, pi/2]
         if not self.training:
             self.angle = angle
-        x = Detect.forward(self, x)
+        
+        # In v8.4.0+, the loss function expects a dictionary in training mode
         if self.training:
-            return x, angle
+            # Detect.forward returns a list of [cat(box, cls)] in training mode
+            x = Detect.forward(self, x)
+            # We need to split them or provide them in a way the loss expects
+            # Based on the error, it expects preds["boxes"], preds["scores"], preds["angle"]
+            # Detect.forward(self, x) returns a list of tensors [B, no, H*W]
+            # where no = nc + reg_max * 4
+            pred_boxes = []
+            pred_scores = []
+            for xi in x:
+                box, score = xi.split((self.reg_max * 4, self.nc), 1)
+                pred_boxes.append(box)
+                pred_scores.append(score)
+            
+            return {
+                "boxes": torch.cat([pb.view(bs, self.reg_max * 4, -1) for pb in pred_boxes], 2),
+                "scores": torch.cat([ps.view(bs, self.nc, -1) for ps in pred_scores], 2),
+                "angle": angle,
+                "feats": x # Keep original feats just in case
+            }
+
+        x = Detect.forward(self, x)
         return torch.cat([x, angle], 1) if self.export else (torch.cat([x[0], angle], 1), (x[1], angle))
 
     def decode_bboxes(self, bboxes: torch.Tensor, anchors: torch.Tensor) -> torch.Tensor:
